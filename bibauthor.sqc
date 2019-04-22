@@ -1,0 +1,178 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "util.h"
+
+
+EXEC SQL INCLUDE SQLCA; 
+
+EXEC SQL BEGIN DECLARE SECTION;
+   	char db[6] = "cs348";
+   	char name[22];
+   	char theauthor[22];
+   	char pubid[10], title[70];
+   	char publisher[50];
+   	int year;
+   	int volume, number;
+   	int startpage, endpage;
+   	char appearsin[10];
+EXEC SQL END DECLARE SECTION;
+
+int main(int argc, char *argv[]) {
+    if (argc!=2) {
+       printf("Usage: bibauthor <pattern>\n");
+       exit(1);
+    };
+    //printf("Author is %s\n", argv[1]);
+
+    EXEC SQL WHENEVER SQLERROR GO TO error;
+
+    EXEC SQL CONNECT TO :db;
+
+    strncpy(theauthor, argv[1], 22);
+    int n = 0;
+    char **printed = malloc(22 * n * sizeof(char));
+
+    //books
+    printf("book seraching\n");
+    EXEC SQL DECLARE pubs CURSOR FOR
+    		 SELECT publication.pubid, publication.title, book.publisher, book.year
+    		 FROM author, wrote, publication, book
+    		 WHERE name LIKE :theauthor
+    		   AND wrote.aid=author.aid
+    		   AND wrote.pubid=publication.pubid
+    		   AND publication.pubid=book.pubid;
+
+    EXEC SQL OPEN pubs;
+    for(;;) {
+    	EXEC SQL WHENEVER NOT FOUND GO TO notfound1;
+    	EXEC SQL FETCH pubs INTO :pubid, :title, :publisher, :year;
+    	printf("Pubid:  %s\n", pubid);
+    	printf("Type:  book\n");
+    	printf("Title:  %s\n", title);
+    	printf("Authors:  ");
+
+    	EXEC SQL DECLARE author CURSOR FOR
+    			SELECT author.name
+    			FROM author, wrote
+    			WHERE author.aid=wrote.aid
+    			  AND wrote.pubid=:pubid;
+    	EXEC SQL OPEN author;
+    	for (;;) {
+    		EXEC SQL FETCH author INTO :name;
+    		printf("%s, ", name);
+    	};
+    	EXEC SQL CLOSE author;
+    	printf("\n");
+    	printf("Publisher:  %s\n", publisher);
+    	printf("Year:  %d\n", year);
+    }
+notfound1:
+    EXEC SQL CLOSE pubs;
+    
+
+    //journals
+    printf("journal searching\n");
+    EXEC SQL DECLARE pubs2 CURSOR FOR
+    		 SELECT publication.pubid, publication.title, journal.volume, journal.number, journal.year
+    		 FROM author, wrote, publication, journal
+    		 WHERE name LIKE :theauthor
+    		   AND wrote.aid=author.aid
+    		   AND wrote.pubid=publication.pubid
+    		   AND journal.pubid=publication.pubid;
+
+    EXEC SQL OPEN pubs;
+    for(;;) {
+    	EXEC SQL WHENEVER NOT FOUND GO TO notfound2;
+    	EXEC SQL FETCH pubs2 INTO :pubid, :title, :volume, :number, :year;
+    	printf("Pubid:  %s\n", pubid);
+    	printf("Type:  journal\n");
+    	printf("Title:  %s\n", title);
+    	printf("Volume:  %d\n", volume);
+    	printf("Number:  %d\n", number);
+    	printf("Year:  %d\n", year);
+    }
+notfound2:
+    EXEC SQL CLOSE pubs2;
+
+    //proceedings
+    printf("proceedings searching\n");
+    EXEC SQL DECLARE pubs3 CURSOR FOR
+    		 SELECT publication.pubid, publication.title, year
+    		 FROM author, wrote, publication, proceedings
+    		 WHERE name LIKE :theauthor
+    		   AND wrote.aid=author.aid
+    		   AND wrote.pubid=publication.pubid
+    		   AND publication.pubid=proceedings.pubid;
+
+    EXEC SQL OPEN pubs3;
+    for(;;) {
+    	EXEC SQL WHENEVER NOT FOUND GO TO notfound3;
+    	EXEC SQL FETCH pubs INTO :pubid, :title, :year;
+    	printf("Pubid:  %s\n", pubid);
+    	printf("Type:  proceedings\n");
+    	printf("Title:  %s\n", title);
+    	printf("Year:  %d\n", year);
+    }
+notfound3:
+    EXEC SQL CLOSE pubs3;
+
+    //article
+    printf("article searching\n");
+    EXEC SQL DECLARE pubs4 CURSOR FOR
+    		 SELECT publication.pubid, publication.title, article.appearsin, article.startpage, article.endpage
+    		 FROM author, wrote, publication, article
+    		 WHERE name LIKE :theauthor
+    		   AND wrote.aid=author.aid
+    		   AND wrote.pubid=publication.pubid
+    		   AND publication.pubid=article.pubid;
+
+    EXEC SQL OPEN pubs4;
+    for(;;) {
+    	EXEC SQL WHENEVER NOT FOUND GO TO notfound4;
+    	EXEC SQL FETCH pubs4 INTO :pubid, :title, :appearsin, :startpage, :endpage;
+    	printf("Pubid:  %s\n", pubid);
+    	printf("Type:  article\n");
+    	printf("Title:  %s\n", title);
+    	printf("Authors:  ");
+
+    	EXEC SQL DECLARE author2 CURSOR FOR    	
+    			SELECT name
+    			FROM author, wrote
+    			WHERE wrote.aid=author.aid
+    			AND pubid=:pubid;
+    	EXEC SQL OPEN author2;
+    	for (;;) {
+    		EXEC SQL FETCH author INTO :name;
+    		printf("%s, ", name);
+    	};
+    	EXEC SQL CLOSE author2;
+    	printf("\n");
+    	printf("In:  %s\n", appearsin);
+    	printf("Pages:  %d--%d\n", startpage, endpage);
+    }
+notfound4:
+    EXEC SQL CLOSE pubs4;
+
+    //normal ending
+    EXEC SQL COMMIT;
+    EXEC SQL CONNECT RESET;
+    exit(0);
+
+notfound:
+	EXEC SQL CLOSE author;
+	EXEC SQL CLOSE author2;
+	EXEC SQL CLOSE pubs;
+	EXEC SQL CLOSE pubs2;
+	EXEC SQL CLOSE pubs3;
+	EXEC SQL CLOSE pubs4;
+	EXEC SQL COMMIT;
+	EXEC SQL CONNECT RESET;
+	exit(0);
+
+error:
+	EXEC SQL WHENEVER SQLERROR CONTINUE;
+	EXEC SQL ROLLBACK;
+	EXEC SQL CONNECT reset;
+	exit(1);
+}
